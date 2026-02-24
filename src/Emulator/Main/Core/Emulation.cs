@@ -25,7 +25,7 @@ namespace Antmicro.Renode.Core
 {
     public class Emulation : IDisposable
     {
-        public Emulation()
+        public Emulation() // 생성자에서 초기화
         {
             MasterTimeSource = new MasterTimeSource();
             HostMachine = new HostMachine();
@@ -97,6 +97,7 @@ namespace Antmicro.Renode.Core
             }
         }
 
+        // 실행
         public void StartAll()
         {
             lock(machLock)
@@ -142,6 +143,8 @@ namespace Antmicro.Renode.Core
             RandomGenerator.ResetSeed(seed);
         }
 
+        // .resc 파일 또는 사용자 입력을 통해, 실행할 보드를 담는다.
+        // 사용자 입력에 대해서는 src/Infrastructure/src/Emulator/Extensions/UserInterface/Commands/MachCommand.cs 참조
         public bool TryAddMachine(IMachine machine, string name)
         {
             lock(machLock)
@@ -155,7 +158,7 @@ namespace Antmicro.Renode.Core
                     return false;
                 }
 
-                machs.Add(name, machine);
+                machs.Add(name, machine); // 해당 machine 을 부팅할 리스트에 추가
 
                 if(machine.LocalTimeSource is ITimeSink machineTimeSink)
                 {
@@ -707,10 +710,10 @@ namespace Antmicro.Renode.Core
             //during start up procedure. It might happen on rare occasions. E.g. when a script loads them, and user
             //hits the pause button.
             //Otherwise it would crash.
-            ExternalsManager.Start();
+            ExternalsManager.Start(); // CLI 화면 또는 네트워크 브릿지 등등과 관련된 매니저 실행
             foreach(var machine in Machines.ToList())
             {
-                machine.Start();
+                machine.Start(); // 가상 보드 (CPU, 버스, 주변장치 등) 실행
             }
         }
 

@@ -1,4 +1,5 @@
-//
+// Machine = 가상 보드 하나의 단위
+// e.g. SPARC 보드는 하나의 Machine 으로 등록된다.
 // Copyright (c) 2010-2026 Antmicro
 // Copyright (c) 2011-2015 Realtime Embedded
 //
@@ -39,6 +40,8 @@ namespace Antmicro.Renode.Core
     {
         public Machine(bool createLocalTimeSource = false)
         {
+            // Q) 각 아키텍처만의 특징 없이 그냥 new 생성자를 통해 주변 장치의 인스턴스가 생성되는데, 그 보드만의 특징은 어디서 부여되는가?
+            // A) 사용자의 명령어와 .repl 파일에 정의된 특정 아키텍처 정보를 통해 동적으로 특징이 부여된다.
             atomicState = new AtomicState(this);
 
             collectionSync = new object();

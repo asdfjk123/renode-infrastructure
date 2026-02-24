@@ -1,4 +1,4 @@
-//
+// Renode CLI 명령어 입력을 담당
 // Copyright (c) 2010-2023 Antmicro
 // Copyright (c) 2011-2015 Realtime Embedded
 //

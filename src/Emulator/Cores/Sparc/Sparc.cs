@@ -29,8 +29,9 @@ namespace Antmicro.Renode.Peripherals.CPU
 
         public override void Start()
         {
+            // 초기화 로직 수행
             InitCPUId();
-            base.Start();
+            base.Start(); // TranslationCPU Start() 상속
         }
 
         public override void OnGPIO(int number, bool value)
