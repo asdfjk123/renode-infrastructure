@@ -6,9 +6,9 @@
 // Full license text is available in 'licenses/MIT.txt' file.
 //
 
-#include <callbacks.h>
-#include "renode_imports.h"
 #include "../tlib/include/unwind.h"
+#include "renode_imports.h"
+#include <callbacks.h>
 
 EXTERNAL(void, touch_host_block, uint64_t)
 
@@ -24,119 +24,124 @@ typedef struct {
   void *host_pointer;
 } host_memory_block_t;
 
-
 typedef struct list_node_t {
-    host_memory_block_t* element;
+  host_memory_block_t *element;
 
-    struct list_node_t* prev;
-    struct list_node_t* next;
+  struct list_node_t *prev;
+  struct list_node_t *next;
 } list_node_t;
 
 typedef struct {
-    list_node_t* guest_to_host_head;
-    list_node_t* host_to_guest_head;
-    
-    uint32_t size;
-    
-    host_memory_block_t *elements;
-    
-    list_node_t *guest_to_host_nodes;
-    list_node_t *host_to_guest_nodes;
+  list_node_t *guest_to_host_head;
+  list_node_t *host_to_guest_head;
+
+  uint32_t size;
+
+  host_memory_block_t *elements;
+
+  list_node_t *guest_to_host_nodes;
+  list_node_t *host_to_guest_nodes;
 } host_memory_block_lists_t;
 
 static host_memory_block_lists_t *lists;
 
-static void move_to_head(list_node_t** head, list_node_t* node)
-{
-    if(*head == node)
-    {
-        // it's already at the top
-        return;
-    }
-    
-    if(node->prev != NULL)
-    {
-        node->prev->next = node->next;
-    }
-      
-    if(node->next != NULL)
-    {
-        node->next->prev = node->prev;
-    }
+static void move_to_head(list_node_t **head, list_node_t *node) {
+  if (*head == node) {
+    // it's already at the top
+    return;
+  }
 
-    (*head)->prev = node;
-    node->prev = NULL;
-    node->next = *head;
-    *head = node;
+  if (node->prev != NULL) {
+    node->prev->next = node->next;
+  }
+
+  if (node->next != NULL) {
+    node->next->prev = node->prev;
+  }
+
+  (*head)->prev = node;
+  node->prev = NULL;
+  node->next = *head;
+  *head = node;
 }
 
-void *tlib_guest_offset_to_host_ptr(uint64_t offset)
-{
+void *tlib_guest_offset_to_host_ptr(uint64_t offset) {
   host_memory_block_lists_t *host_blocks_list_cached;
   list_node_t *current_block;
 try_find_block:
   host_blocks_list_cached = lists;
 
-  if(host_blocks_list_cached != NULL)
-  {
-      current_block = host_blocks_list_cached->guest_to_host_head;
-      while(current_block != NULL)
-      {
-        if(offset >= current_block->element->start && offset <= (current_block->element->start + current_block->element->size - 1)) {
-            move_to_head(&host_blocks_list_cached->guest_to_host_head, current_block);
-            return current_block->element->host_pointer + (offset - current_block->element->start);
-        }
-
-        current_block = current_block->next;
+  if (host_blocks_list_cached != NULL) {
+    current_block = host_blocks_list_cached->guest_to_host_head;
+    while (current_block != NULL) {
+      if (offset >= current_block->element->start &&
+          offset <= (current_block->element->start +
+                     current_block->element->size - 1)) {
+        move_to_head(&host_blocks_list_cached->guest_to_host_head,
+                     current_block);
+        return current_block->element->host_pointer +
+               (offset - current_block->element->start);
       }
+
+      current_block = current_block->next;
+    }
   }
 
   touch_host_block(offset);
   goto try_find_block;
 }
 
-uint64_t tlib_host_ptr_to_guest_offset(void *ptr)
-{
+// 실제 메모리를 가리키는 "포인터" 로부터, 가상 메모리 상의 물리 주소 계산
+uint64_t tlib_host_ptr_to_guest_offset(void *ptr) {
   host_memory_block_lists_t *host_blocks_list_cached;
   list_node_t *current_block;
 
   host_blocks_list_cached = lists;
 
-  if(host_blocks_list_cached != NULL)
-  {
-      current_block = host_blocks_list_cached->host_to_guest_head; 
-      while(current_block != NULL)
-      {
-        if(ptr >= current_block->element->host_pointer && ptr <= (current_block->element->host_pointer + current_block->element->size - 1)) {
-            move_to_head(&host_blocks_list_cached->host_to_guest_head, current_block);
-            return current_block->element->start + (ptr - current_block->element->host_pointer);
-        }
+  if (host_blocks_list_cached != NULL) {
+    current_block = host_blocks_list_cached->host_to_guest_head;
+    while (current_block != NULL) {
 
-        current_block = current_block->next;
+      // 포인터가 현재 블록 안에 속하는 경우 (정상적인 경우)
+      // 여기서 말하는 블록이란, 메모리 영역을 단위로 하는 블록이다. 호스트
+      // 컴퓨터의 실제 주소 포인터와 그게 가리키는 메모리 영역을 쌍으로, 블록
+      // 형태로 저장한다 메모리 영역이라 함은, 일반 영역, 플래시 메모리, I/O
+      // 메모리 영역 등등을 말한다. 이들은 실제 보드에서는 분리되어 있지만,
+      // 가상으로는 하나의 리스트로 관리된다고 한다.
+      if (ptr >= current_block->element->host_pointer &&
+          ptr <= (current_block->element->host_pointer +
+                  current_block->element->size - 1)) {
+        move_to_head(&host_blocks_list_cached->host_to_guest_head,
+                     current_block); // 블록을 맨 앞으로 배치 -> 자주 사용할
+                                     // 메모리 블록을 앞으로 가져오는 것이다.
+                                     // 나중에 더 빨리 조회된다.
+        return current_block->element->start +
+               (ptr - current_block->element->host_pointer);
       }
+
+      current_block =
+          current_block->next; // 다음 블록으로 전환해서 계속 while 문 탐색
+    }
   }
 
   tlib_abort("Trying to translate pointer that was not alocated by us.");
   return 0;
 }
 
-static void free_list(host_memory_block_lists_t **lists)
-{
-    if(*lists == NULL)
-    {
-        return;
-    }
+static void free_list(host_memory_block_lists_t **lists) {
+  if (*lists == NULL) {
+    return;
+  }
 
-    tlib_free((*lists)->elements);
-    tlib_free((*lists)->guest_to_host_nodes);
-    tlib_free((*lists)->host_to_guest_nodes);
-    tlib_free(*lists);
+  tlib_free((*lists)->elements);
+  tlib_free((*lists)->guest_to_host_nodes);
+  tlib_free((*lists)->host_to_guest_nodes);
+  tlib_free(*lists);
 
-    *lists = NULL;
+  *lists = NULL;
 }
 
-void renode_set_host_blocks(host_memory_block_packed_t *blocks, int count)
-{
+void renode_set_host_blocks(host_memory_block_packed_t *blocks, int count) {
   int i;
   host_memory_block_lists_t *old_mappings;
   host_memory_block_lists_t *new_mappings;
@@ -152,7 +157,7 @@ void renode_set_host_blocks(host_memory_block_packed_t *blocks, int count)
   new_mappings->host_to_guest_nodes = tlib_malloc(sizeof(list_node_t) * count);
   new_mappings->host_to_guest_head = &new_mappings->host_to_guest_nodes[0];
 
-  for(i = 0; i < count; i++) {
+  for (i = 0; i < count; i++) {
     new_mappings->elements[i].start = blocks[i].start;
     new_mappings->elements[i].size = blocks[i].size;
     new_mappings->elements[i].host_pointer = blocks[i].host_pointer;
@@ -160,26 +165,24 @@ void renode_set_host_blocks(host_memory_block_packed_t *blocks, int count)
     new_mappings->guest_to_host_nodes[i].element = &new_mappings->elements[i];
     new_mappings->host_to_guest_nodes[i].element = &new_mappings->elements[i];
 
-    if(i == 0)
-    {
-        new_mappings->guest_to_host_nodes[i].prev = NULL;
-        new_mappings->host_to_guest_nodes[i].prev = NULL;
-    }
-    else
-    {
-        new_mappings->guest_to_host_nodes[i].prev = &new_mappings->guest_to_host_nodes[i - 1];
-        new_mappings->host_to_guest_nodes[i].prev = &new_mappings->host_to_guest_nodes[i - 1];
+    if (i == 0) {
+      new_mappings->guest_to_host_nodes[i].prev = NULL;
+      new_mappings->host_to_guest_nodes[i].prev = NULL;
+    } else {
+      new_mappings->guest_to_host_nodes[i].prev =
+          &new_mappings->guest_to_host_nodes[i - 1];
+      new_mappings->host_to_guest_nodes[i].prev =
+          &new_mappings->host_to_guest_nodes[i - 1];
     }
 
-    if(i == count - 1)
-    {
-        new_mappings->guest_to_host_nodes[i].next = NULL;
-        new_mappings->host_to_guest_nodes[i].next = NULL;
-    }
-    else
-    {
-        new_mappings->guest_to_host_nodes[i].next = &new_mappings->guest_to_host_nodes[i + 1];
-        new_mappings->host_to_guest_nodes[i].next = &new_mappings->host_to_guest_nodes[i + 1];
+    if (i == count - 1) {
+      new_mappings->guest_to_host_nodes[i].next = NULL;
+      new_mappings->host_to_guest_nodes[i].next = NULL;
+    } else {
+      new_mappings->guest_to_host_nodes[i].next =
+          &new_mappings->guest_to_host_nodes[i + 1];
+      new_mappings->host_to_guest_nodes[i].next =
+          &new_mappings->host_to_guest_nodes[i + 1];
     }
   }
 
@@ -187,11 +190,9 @@ void renode_set_host_blocks(host_memory_block_packed_t *blocks, int count)
   free_list(&old_mappings);
 }
 
-EXC_VOID_2(renode_set_host_blocks, host_memory_block_packed_t *, blocks, int, count)
+EXC_VOID_2(renode_set_host_blocks, host_memory_block_packed_t *, blocks, int,
+           count)
 
-void renode_free_host_blocks()
-{
-    free_list(&lists);
-}
+void renode_free_host_blocks() { free_list(&lists); }
 
 EXC_VOID_0(renode_free_host_blocks)
